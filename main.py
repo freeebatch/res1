@@ -26,6 +26,7 @@ user = Client(
 
 # ——————————————————————————————————————————————
 active_jobs = {}
+print("🔄 All active jobs cleared on startup.")
 
 def extract_link(link: str):
     m1 = R.match(r"https://t\.me/c/(\d+)/(\d+)", link)
@@ -92,7 +93,7 @@ async def start_batch(c: Client, m: Message):
 
     total_count = 500
     batch_size = 20
-    dest_chat = "-1002370656932"
+    dest_chat = "-1002552054520"
     sent_success = 0
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
@@ -128,8 +129,8 @@ async def start_batch(c: Client, m: Message):
 async def cancel_batch(c: Client, m: Message):
     user_id = m.from_user.id
     if user_id in active_jobs:
-        active_jobs[user_id] = False
-        await m.reply("🛑 Cancelling process...")
+        active_jobs.pop(user_id, None)
+        await m.reply("🛑 Cancelling process... Done.")
     else:
         await m.reply("❗ No active job found.")
 
