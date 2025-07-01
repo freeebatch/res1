@@ -1,160 +1,122 @@
-import os as O, re as R
-from pyrogram import Client as C, filters as F
-from pyrogram.types import Message as M
+import os as O
+import re as R
 import time
-from config import API_ID as A, API_HASH as H, BOT_TOKEN as T, SESSION as S
+import asyncio
 
-X, Y = C("X", api_id=A, api_hash=H, bot_token=T), C("Y", api_id=A, api_hash=H, session_string=S)
-Z, W = {}, {}
-try:
-    Y.start()
-    print("userbot started")
-except Exception:
-    print("check your session")
-    pass
-    
-progress_cache = {}
+from pyrogram import Client, filters
+from pyrogram.types import Message
 
-def E(L):
-    Q = R.match(r"https://t\.me/c/(\d+)/(\d+)", L)
-    P = R.match(r"https://t\.me/([^/]+)/(\d+)", L)
-    
-    if Q:
-        return f"-100{Q.group(1)}", int(Q.group(2)), "private"
-    elif P:
-        return P.group(1), int(P.group(2)), "public"
-    else:
-        return None, None, None
-        
-async def J(C, U, I, D, link_type):
+from config import API_ID, API_HASH, BOT_TOKEN, SESSION
+
+# ——————————————————————————————————————————————
+# Initialize Bot and User Clients
+bot = Client(
+    "bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
+
+user = Client(
+    "user",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    session_string=SESSION
+)
+
+def extract_link(link: str):
+    """
+    Parse a t.me link and return (chat_id, message_id, link_type).
+    link_type is "public" or "private".
+    """
+    m1 = R.match(r"https://t\.me/c/(\d+)/(\d+)", link)
+    m2 = R.match(r"https://t\.me/([^/]+)/(\d+)", link)
+    if m1:
+        return f"-100{m1.group(1)}", int(m1.group(2)), "private"
+    if m2:
+        return m2.group(1), int(m2.group(2)), "public"
+    return None, None, None
+
+async def fetch_message(bot_client, user_client, chat_id, msg_id, link_type):
+    client = bot_client if link_type == "public" else user_client
     try:
-        print(f"Fetching message from {I}, Message ID: {D}, Type: {link_type}")
-        return await (C if link_type == "public" else U).get_messages(I, D)
+        return await client.get_messages(chat_id, msg_id)
     except Exception as e:
-        print(f"Error fetching message: {e}")
+        print(f"[Fetch Error] chat={chat_id} msg_id={msg_id}: {e}")
         return None
 
-
-async def K(c, t, C, h, m, start_time):
-    global progress_cache
-    p = (c / t) * 100
-    step = int(p // 10) * 10
-
-    if m not in progress_cache or progress_cache[m] != step or p >= 100:
-        progress_cache[m] = step
-        bar = "🟢" * (int(p / 10)) + "🔴" * (10 - int(p / 10))
-        speed = (c / (time.time() - start_time)) / (1024 * 1024) if time.time() > start_time else 0
-        eta = time.strftime("%M:%S", time.gmtime((t - c) / (speed * 1024 * 1024))) if speed > 0 else "00:00"
-        await C.edit_message_text(h, m, f"__**Pyro Handler...**__\n\n{bar}\n\n📊 **__Completed__**: {p:.2f}%\n🚀 **__Speed**__: {speed:.2f} MB/s\n⏳ **__ETA**__: {eta}\n\n**__Powered by Team SPY__**")
-        if p >= 100:
-            progress_cache.pop(m, None)
-            
-async def V(C, U, m, d, link_type, u):
+async def forward_or_send(bot_client, user_client, msg, dest_chat, link_type):
     try:
-        if m.media:
-            st = time.time()
+        if msg.media:
             if link_type == "private":
-                P = await C.send_message(d, "Downloading...")
-                W[u] = {"cancel": False, "progress": P.id}
-                F = await U.download_media(m, progress=K, progress_args=(C, d, P.id, st))
-                
-                if W.get(u, {}).get("cancel"):
-                    await C.edit_message_text(d, P.id, "Canceled.")
-                    if O.path.exists(F): O.remove(F)
-                    del W[u]
-                    return "Canceled."
-                
-                if not F:
-                    await C.edit_message_text(d, P.id, "Failed.")
-                    del W[u]
-                    return "Failed."
-                
-                await C.edit_message_text(d, P.id, "Uploading...")
-                th = "v3.jpg"
-                if m.video:
-                    width, height, duration = m.video.width, m.video.height, m.video.duration
-                    await C.send_video(d, video=F, caption=m.caption.markdown, thumb=th, width=width, height=height, duration=duration, progress=K, progress_args=(C, d, P.id, st))
-                elif m.video_note: await C.send_video_note(d, video_note=F, progress=K, progress_args=(C, d, P.id, st))
-                elif m.voice: await C.send_voice(d, F, progress=K, progress_args=(C, d, P.id, st))
-                elif m.sticker: await C.send_sticker(d, m.sticker.file_id)
-                elif m.audio: await C.send_audio(d, audio=F, caption=m.caption.markdown, thumb=th, progress=K, progress_args=(C, d, P.id, st))
-                elif m.photo: await C.send_photo(d, photo=F, caption=m.caption.markdown, progress=K, progress_args=(C, d, P.id, st))
-                elif m.document: await C.send_document(d, document=F, caption=m.caption.markdown, progress=K, progress_args=(C, d, P.id, st))
-                O.remove(F)
-                await C.delete_messages(d, P.id)
-                del W[u]
-                return "Done."
+                path = await user_client.download_media(msg)
+                await bot_client.send_document(dest_chat, path)
+                O.remove(path)
             else:
-                await m.copy(chat_id=d)
-                return "Copied."
-        elif m.text:
-            await (C.send_message(d, text=m.text.markdown) if link_type == "private" else m.copy(chat_id=d))
-            return "Sent."
+                await msg.copy(chat_id=dest_chat)
+            return "Done"
+        elif msg.text:
+            if link_type == "private":
+                await bot_client.send_message(dest_chat, msg.text)
+            else:
+                await msg.copy(chat_id=dest_chat)
+            return "Done"
+        else:
+            return "Skipped"
     except Exception as e:
-        return f"Error: {e}"
+        print(f"[Send Error] {e}")
+        return "Error"
 
-@X.on_message(F.command("start"))
-async def sex(C, m: M):
-    await m.reply_text("Welcome to bot. Use /batch to start magic.")
+@bot.on_message(filters.command("start", prefixes="/"))
+async def start_batch(c: Client, m: Message):
+    parts = m.text.split(maxsplit=1)
+    if len(parts) != 2:
+        return await m.reply_text(
+            "❗️ Please send:\n"
+            "`/start https://t.me/c/123456789/100`\n"
+            "or\n"
+            "`/start https://t.me/SomePublicChannel/100`",
+            quote=True
+        )
+    link = parts[1]
+    chat_id, start_id, link_type = extract_link(link)
+    if not chat_id:
+        return await m.reply_text("❗️ Invalid Telegram link.", quote=True)
 
-@X.on_message(F.command("batch"))
-async def B(C, m: M):
-    U = m.from_user.id
-    Z[U] = {"step": "start"}
-    await m.reply_text("Send start link.")
+    total_count = 500
+    batch_size = 20
+    dest_chat = "-1002370656932"
+    sent_success = 0
 
-@X.on_message(F.command("cancel"))
-async def N(C, m: M):
-    U = m.from_user.id
-    if U in W:
-        W[U]["cancel"] = True
-        await m.reply_text("Cancelling...")
-    else:
-        await m.reply_text("No active task.")
+    progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
 
-@X.on_message(F.text & ~F.command(["start", "batch", "cancel"]))
-async def H(C, m: M):
-    U = m.from_user.id
-    if U not in Z:
-        return
-    S = Z[U].get("step")
-    if S == "start":
-        L = m.text
-        I, D, link_type = E(L)
-        if not I or not D:
-            await m.reply_text("Invalid link. Please check the format.")
-            del Z[U]
-            return
-        Z[U].update({"step": "count", "cid": I, "sid": D, "lt": link_type})
-        await m.reply_text("How many messages?")
-    
-    elif S == "count":
-        if not m.text.isdigit():
-            await m.reply_text("Enter a valid number.")
-            return
-        Z[U].update({"step": "dest", "num": int(m.text)})
-        await m.reply_text("Send destination chat ID.")
-    
-    elif S == "dest":
-        D = m.text
-        Z[U].update({"step": "process", "did": D})
-        
-        I, S, N, link_type = Z[U]["cid"], Z[U]["sid"], Z[U]["num"], Z[U]["lt"]
-        R = 0
-        pt = await m.reply_text("Trying hard 🐥...")
-        
-        for i in range(N):
-            M = S + i
-            msg = await J(C, Y, I, M, link_type)
-            if msg:
-                res = await V(C, Y, msg, D, link_type, U)
-                await pt.edit(f"{i+1}/{N}: {res}")
-                if "Done" in res: R += 1
+    for batch_offset in range(0, total_count, batch_size):
+        for i in range(batch_size):
+            current_index = batch_offset + i
+            msg_id = start_id + current_index
+            msg = await fetch_message(bot, user, chat_id, msg_id, link_type)
+            if not msg:
+                status = f"{current_index+1}/{total_count}: ❌ not found"
             else:
-                await m.reply_text(f"{M} not found.")
-        
-        await m.reply_text(f"Batch Completed ✅")
-        del Z[U]
+                result = await forward_or_send(bot, user, msg, dest_chat, link_type)
+                if result == "Done":
+                    sent_success += 1
+                status = f"{current_index+1}/{total_count}: {result}"
 
-print("Bot started successfully!!")
-X.run()
+            await progress_msg.edit(status)
+            await asyncio.sleep(2)
+
+        if batch_offset + batch_size < total_count:
+            await progress_msg.edit(f"Sent {batch_offset + batch_size}/{total_count} — sleeping 60 s… 💤")
+            await asyncio.sleep(60)
+
+    await m.reply_text(f"✅ All done! ({sent_success}/{total_count} succeeded)", quote=True)
+
+if __name__ == "__main__":
+    try:
+        user.start()
+        print("User session started.")
+    except Exception as e:
+        print("Failed to start user session:", e)
+
+    bot.run()
