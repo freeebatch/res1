@@ -93,7 +93,7 @@ async def start_batch(c: Client, m: Message):
 
     total_count = 500
     batch_size = 20
-    dest_chat = "-1002552054520"
+    dest_chat = "-1002889116000"
     sent_success = 0
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
