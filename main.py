@@ -91,8 +91,8 @@ async def start_batch(c: Client, m: Message):
         active_jobs.pop(user_id, None)
         return await m.reply_text("❗️ Invalid Telegram link.", quote=True)
 
-    total_count = 800
-    batch_size = 40
+    total_count = 1000
+    batch_size = 20
     dest_chat = "-1002783006196"
     sent_success = 0
 
@@ -120,7 +120,7 @@ async def start_batch(c: Client, m: Message):
 
         if batch_offset + batch_size < total_count:
             await progress_msg.edit(f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤")
-            await asyncio.sleep(15)
+            await asyncio.sleep(60)
 
     active_jobs.pop(user_id, None)
     await m.reply_text(f"✅ All done! ({sent_success}/{total_count} succeeded)", quote=True)
