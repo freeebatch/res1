@@ -93,7 +93,7 @@ async def start_batch(c: Client, m: Message):
 
     total_count = 800
     batch_size = 40
-    dest_chat = "-1002863786058"
+    dest_chat = "-1002783006196"
     sent_success = 0
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
@@ -116,7 +116,7 @@ async def start_batch(c: Client, m: Message):
                 status = f"{current_index+1}/{total_count}: {result}"
 
             await progress_msg.edit(status)
-            await asyncio.sleep(0)
+            await asyncio.sleep(2)
 
         if batch_offset + batch_size < total_count:
             await progress_msg.edit(f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤")
