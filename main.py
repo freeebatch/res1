@@ -92,8 +92,8 @@ async def start_batch(c: Client, m: Message):
         return await m.reply_text("❗️ Invalid Telegram link.", quote=True)
 
     total_count = 1000
-    batch_size = 20
-    dest_chat = "-1002507375784"
+    batch_size = 50
+    dest_chat = "-1003009642580"
     sent_success = 0
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
