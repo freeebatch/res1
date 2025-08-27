@@ -1,21 +1,15 @@
-import os
-import re
+import os as O
+import re as R
 import time
 import asyncio
 
-from pyrogram import Client, filters, idle
+from pyrogram import Client, filters
 from pyrogram.types import Message
-from pyrogram.errors import FloodWait
-import pyrogram
 
 from config import API_ID, API_HASH, BOT_TOKEN, SESSION
 
 # ——————————————————————————————————————————————
-# Detect Pyrogram major version
-PYROGRAM_MAJOR = int(pyrogram.__version__.split(".")[0])
-print(f"🔍 Detected Pyrogram v{pyrogram.__version__}")
-
-# Initialize Bot
+# Initialize Bot and User Clients
 bot = Client(
     "bot",
     api_id=API_ID,
@@ -23,31 +17,20 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# Initialize User
-if PYROGRAM_MAJOR >= 2:
-    # Pyrogram v2+ syntax
-    user = Client(
-        "user",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION
-    )
-else:
-    # Pyrogram v1 syntax (SESSION is session_name or .session file)
-    user = Client(
-        SESSION,
-        api_id=API_ID,
-        api_hash=API_HASH
-    )
+user = Client(
+    "user",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    session_string=SESSION
+)
 
 # ——————————————————————————————————————————————
 active_jobs = {}
 print("🔄 All active jobs cleared on startup.")
 
 def extract_link(link: str):
-    """Extract chat_id, message_id and type from Telegram link"""
-    m1 = re.match(r"https://t\.me/c/(\d+)/(\d+)", link)
-    m2 = re.match(r"https://t\.me/([^/]+)/(\d+)", link)
+    m1 = R.match(r"https://t\.me/c/(\d+)/(\d+)", link)
+    m2 = R.match(r"https://t\.me/([^/]+)/(\d+)", link)
     if m1:
         return f"-100{m1.group(1)}", int(m1.group(2)), "private"
     if m2:
@@ -55,27 +38,20 @@ def extract_link(link: str):
     return None, None, None
 
 async def fetch_message(bot_client, user_client, chat_id, msg_id, link_type):
-    """Fetch a message safely, retrying on FloodWait"""
     client = bot_client if link_type == "public" else user_client
     try:
-        return await client.get_messages(chat_id, msg_id)
-    except FloodWait as e:
-        print(f"[FloodWait] Sleeping {e.x} sec for chat={chat_id}")
-        await asyncio.sleep(e.x)
         return await client.get_messages(chat_id, msg_id)
     except Exception as e:
         print(f"[Fetch Error] chat={chat_id} msg_id={msg_id}: {e}")
         return None
 
 async def forward_or_send(bot_client, user_client, msg, dest_chat, link_type):
-    """Forward or re-send a message depending on type"""
     try:
         if msg.media:
             if link_type == "private":
                 path = await user_client.download_media(msg)
-                if path:  # ✅ ensure not None
-                    await bot_client.send_document(dest_chat, path)
-                    os.remove(path)
+                await bot_client.send_document(dest_chat, path)
+                O.remove(path)
             else:
                 await msg.copy(chat_id=dest_chat)
             return "Done"
@@ -87,15 +63,9 @@ async def forward_or_send(bot_client, user_client, msg, dest_chat, link_type):
             return "Done"
         else:
             return "Skipped"
-    except FloodWait as e:
-        print(f"[FloodWait] Sleeping {e.x} sec during forward")
-        await asyncio.sleep(e.x)
-        return await forward_or_send(bot_client, user_client, msg, dest_chat, link_type)
     except Exception as e:
         return f"Error: {e}"
 
-# ——————————————————————————————————————————————
-# Commands
 @bot.on_message(filters.command("start", prefixes="/"))
 async def start_batch(c: Client, m: Message):
     user_id = m.from_user.id
@@ -109,6 +79,8 @@ async def start_batch(c: Client, m: Message):
         active_jobs.pop(user_id, None)
         return await m.reply_text(
             "❗️ Please send:\n"
+            "`BY ANURAG`\n"
+            "or\n"
             "`/start https://t.me/SomePublicChannel/100`",
             quote=True
         )
@@ -135,7 +107,6 @@ async def start_batch(c: Client, m: Message):
             current_index = batch_offset + i
             msg_id = start_id + current_index
             msg = await fetch_message(bot, user, chat_id, msg_id, link_type)
-
             if not msg:
                 status = f"{current_index+1}/{total_count}: ❌ not found"
             else:
@@ -148,9 +119,7 @@ async def start_batch(c: Client, m: Message):
             await asyncio.sleep(1)
 
         if batch_offset + batch_size < total_count:
-            await progress_msg.edit(
-                f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤"
-            )
+            await progress_msg.edit(f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤")
             await asyncio.sleep(60)
 
     active_jobs.pop(user_id, None)
@@ -165,11 +134,11 @@ async def cancel_batch(c: Client, m: Message):
     else:
         await m.reply("❗ No active job found.")
 
-# ——————————————————————————————————————————————
 if __name__ == "__main__":
-    user.start()
-    bot.start()
-    print("✅ Both clients started.")
-    idle()  # ✅ keeps both running
-    user.stop()
-    bot.stop()
+    try:
+        user.start()
+        print("User session started.")
+    except Exception as e:
+        print("Failed to start user session:", e)
+
+    bot.run()
