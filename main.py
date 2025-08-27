@@ -160,3 +160,62 @@ if __name__ == "__main__":
         print("Failed to start user session:", e)
 
     bot.run()
+    resp = await bot.listen(m.chat.id)   # wait for user reply
+    dest_chat = resp.text.strip()
+    DEST_CHANNELS[user_id] = dest_chat
+
+    active_jobs[user_id] = True
+    total_count = 1000
+    batch_size = 20
+    sent_success = 0
+
+    progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
+
+    for batch_offset in range(0, total_count, batch_size):
+        for i in range(batch_size):
+            if not active_jobs.get(user_id):
+                await progress_msg.edit("🚫 Cancelled by user.")
+                return
+
+            current_index = batch_offset + i
+            msg_id = start_id + current_index
+            msg = await fetch_message(bot, user, chat_id, msg_id, link_type)
+            if not msg:
+                status = f"{current_index+1}/{total_count}: ❌ not found"
+            else:
+                result = await forward_or_send(bot, user, msg, dest_chat, link_type)
+                if result == "Done":
+                    sent_success += 1
+                status = f"{current_index+1}/{total_count}: {result}"
+
+            await progress_msg.edit(status)
+            await asyncio.sleep(1)
+
+        if batch_offset + batch_size < total_count:
+            await progress_msg.edit(
+                f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤"
+            )
+            await asyncio.sleep(60)
+
+    active_jobs.pop(user_id, None)
+    await m.reply_text(f"✅ All done! ({sent_success}/{total_count} succeeded)", quote=True)
+
+
+@bot.on_message(filters.command("cancel", prefixes="/"))
+async def cancel_batch(c: Client, m: Message):
+    user_id = m.from_user.id
+    if user_id in active_jobs:
+        active_jobs.pop(user_id, None)
+        await m.reply("🛑 Cancelling process... Done.")
+    else:
+        await m.reply("❗ No active job found.")
+
+
+if __name__ == "__main__":
+    try:
+        user.start()
+        print("User session started.")
+    except Exception as e:
+        print("Failed to start user session:", e)
+
+    bot.run()
