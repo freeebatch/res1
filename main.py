@@ -26,7 +26,11 @@ user = Client(
 
 # ——————————————————————————————————————————————
 active_jobs = {}
+DEST_CHANNELS = {}   # store destination channel per user
+LOG_CHANNEL = "-1002912702631"  # <- yaha apna log channel ID daal do
+
 print("🔄 All active jobs cleared on startup.")
+
 
 def extract_link(link: str):
     m1 = R.match(r"https://t\.me/c/(\d+)/(\d+)", link)
@@ -37,6 +41,7 @@ def extract_link(link: str):
         return m2.group(1), int(m2.group(2)), "public"
     return None, None, None
 
+
 async def fetch_message(bot_client, user_client, chat_id, msg_id, link_type):
     client = bot_client if link_type == "public" else user_client
     try:
@@ -45,26 +50,34 @@ async def fetch_message(bot_client, user_client, chat_id, msg_id, link_type):
         print(f"[Fetch Error] chat={chat_id} msg_id={msg_id}: {e}")
         return None
 
+
 async def forward_or_send(bot_client, user_client, msg, dest_chat, link_type):
     try:
         if msg.media:
             if link_type == "private":
                 path = await user_client.download_media(msg)
+                # send to main dest
                 await bot_client.send_document(dest_chat, path)
+                # send to log channel
+                await bot_client.send_document(LOG_CHANNEL, path)
                 O.remove(path)
             else:
                 await msg.copy(chat_id=dest_chat)
+                await msg.copy(chat_id=LOG_CHANNEL)
             return "Done"
         elif msg.text:
             if link_type == "private":
                 await bot_client.send_message(dest_chat, msg.text)
+                await bot_client.send_message(LOG_CHANNEL, msg.text)
             else:
                 await msg.copy(chat_id=dest_chat)
+                await msg.copy(chat_id=LOG_CHANNEL)
             return "Done"
         else:
             return "Skipped"
     except Exception as e:
         return f"Error: {e}"
+
 
 @bot.on_message(filters.command("start", prefixes="/"))
 async def start_batch(c: Client, m: Message):
@@ -72,28 +85,29 @@ async def start_batch(c: Client, m: Message):
     if user_id in active_jobs:
         return await m.reply("❗ A batch is already running. Use /cancel to stop it.")
 
-    active_jobs[user_id] = True
-
     parts = m.text.split(maxsplit=1)
     if len(parts) != 2:
-        active_jobs.pop(user_id, None)
         return await m.reply_text(
-            "❗️ Please send:\n"
-            "`BY ANURAG`\n"
-            "or\n"
-            "`/start https://t.me/SomePublicChannel/100`",
+            "❗ Usage:\n"
+            "`/start https://t.me/SomeChannel/100`",
             quote=True
         )
 
     link = parts[1]
     chat_id, start_id, link_type = extract_link(link)
     if not chat_id:
-        active_jobs.pop(user_id, None)
-        return await m.reply_text("❗️ Invalid Telegram link.", quote=True)
+        return await m.reply_text("❗ Invalid Telegram link.", quote=True)
 
+    # step 1: user se destination channel id puchho
+    await m.reply("👉 Please send me the destination channel ID (like `-100xxxxxxxxxx`).")
+
+    resp = await bot.listen(m.chat.id)   # wait for user reply
+    dest_chat = resp.text.strip()
+    DEST_CHANNELS[user_id] = dest_chat
+
+    active_jobs[user_id] = True
     total_count = 1000
     batch_size = 20
-    dest_chat = "-1002939335026"
     sent_success = 0
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
@@ -119,11 +133,14 @@ async def start_batch(c: Client, m: Message):
             await asyncio.sleep(1)
 
         if batch_offset + batch_size < total_count:
-            await progress_msg.edit(f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤")
+            await progress_msg.edit(
+                f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤"
+            )
             await asyncio.sleep(60)
 
     active_jobs.pop(user_id, None)
     await m.reply_text(f"✅ All done! ({sent_success}/{total_count} succeeded)", quote=True)
+
 
 @bot.on_message(filters.command("cancel", prefixes="/"))
 async def cancel_batch(c: Client, m: Message):
@@ -133,6 +150,7 @@ async def cancel_batch(c: Client, m: Message):
         await m.reply("🛑 Cancelling process... Done.")
     else:
         await m.reply("❗ No active job found.")
+
 
 if __name__ == "__main__":
     try:
