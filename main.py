@@ -26,7 +26,7 @@ user = Client(
 # ——————————————————————————————————————————————
 active_jobs = {}
 waiting_for_dest = {}   # user state dict (waiting for dest ID)
-LOG_CHANNEL = "-1001234567890"   # <- apna log channel ID daal do
+LOG_CHANNEL = "-1002912702631"   # <- apna log channel ID daal do
 
 print("🔄 All active jobs cleared on startup.")
 
