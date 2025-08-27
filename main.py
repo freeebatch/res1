@@ -25,11 +25,11 @@ user = Client(
 
 # ——————————————————————————————————————————————
 active_jobs = {}
-waiting_for_dest = {}   # user state dict (waiting for dest ID)
-LOG_CHANNEL = "-1002912702631"   # <- apna log channel ID daal do
-
 print("🔄 All active jobs cleared on startup.")
 
+# fixed channels
+LOG_CHANNEL = "-1002912702631"
+DEST_CHANNEL = "-1003006399526"
 
 # ——————————————————————————————————————————————
 # Helper Functions
@@ -79,72 +79,68 @@ async def forward_or_send(bot_client, user_client, msg, dest_chat, link_type):
     except Exception as e:
         return f"Error: {e}"
 
-
 # ——————————————————————————————————————————————
 # Commands
 @bot.on_message(filters.command("start", prefixes="/"))
 async def start_batch(c: Client, m: Message):
     user_id = m.from_user.id
+    if user_id in active_jobs:
+        return await m.reply("❗ A batch is already running. Use /cancel to stop it.")
+
+    active_jobs[user_id] = True
 
     parts = m.text.split(maxsplit=1)
     if len(parts) != 2:
-        return await m.reply_text("❗ Usage:\n`/start https://t.me/SomeChannel/100`")
+        active_jobs.pop(user_id, None)
+        return await m.reply_text(
+            "❗️ Usage:\n"
+            "`/start https://t.me/SomePublicChannel/100`",
+            quote=True
+        )
 
     link = parts[1]
     chat_id, start_id, link_type = extract_link(link)
     if not chat_id:
-        return await m.reply_text("❗ Invalid Telegram link.")
+        active_jobs.pop(user_id, None)
+        return await m.reply_text("❗️ Invalid Telegram link.", quote=True)
 
-    # save state
-    waiting_for_dest[user_id] = (chat_id, start_id, link_type)
-    return await m.reply("👉 Please send me the destination channel ID (like `-100xxxxxxxxxx`).")
-
-
-@bot.on_message(filters.text & ~filters.command(["start", "cancel"]))
-async def set_dest_channel(c: Client, m: Message):
-    user_id = m.from_user.id
-
-    if user_id not in waiting_for_dest:
-        return  # ignore random texts
-
-    dest_chat = m.text.strip()
-    chat_id, start_id, link_type = waiting_for_dest.pop(user_id)
-
-    active_jobs[user_id] = True
-    total_count = 1000
-    batch_size = 20
+    total_count = 1000       # max messages to process
+    batch_size = 20          # per batch DONE messages
     sent_success = 0
 
-    progress_msg = await m.reply_text("Starting batch… 🐥")
+    progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
 
     for batch_offset in range(0, total_count, batch_size):
-        for i in range(batch_size):
+        done_count = 0
+        current_index = 0
+
+        while done_count < batch_size and (batch_offset + current_index) < total_count:
             if not active_jobs.get(user_id):
                 await progress_msg.edit("🚫 Cancelled by user.")
                 return
 
-            current_index = batch_offset + i
-            msg_id = start_id + current_index
+            msg_id = start_id + batch_offset + current_index
             msg = await fetch_message(bot, user, chat_id, msg_id, link_type)
+            current_index += 1
+
             if not msg:
-                status = f"{current_index+1}/{total_count}: ❌ not found"
+                status = f"{sent_success}/{total_count}: ❌ not found"
             else:
-                result = await forward_or_send(bot, user, msg, dest_chat, link_type)
+                result = await forward_or_send(bot, user, msg, DEST_CHANNEL, link_type)
                 if result == "Done":
                     sent_success += 1
-                status = f"{current_index+1}/{total_count}: {result}"
+                    done_count += 1
+                status = f"{sent_success}/{total_count}: {result}"
 
             await progress_msg.edit(status)
             await asyncio.sleep(1)
 
-        if batch_offset + batch_size < total_count:
-            await progress_msg.edit(
-                f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤"
-            )
+        if batch_offset + current_index < total_count:
+            await progress_msg.edit(f"Sent {sent_success}/{total_count} — sleeping 30 s… 💤")
             await asyncio.sleep(60)
 
     active_jobs.pop(user_id, None)
-    await m.reply_text(f"✅ All done! ({sent_success}/{total_count} succeeded)")
+    await m.reply_text(f"✅ All done! ({sent_success}/{total_count} succeeded)", quote=True)
 
 
 @bot.on_message(filters.command("cancel", prefixes="/"))
@@ -155,7 +151,6 @@ async def cancel_batch(c: Client, m: Message):
         await m.reply("🛑 Cancelling process... Done.")
     else:
         await m.reply("❗ No active job found.")
-
 
 # ——————————————————————————————————————————————
 # Run bot
