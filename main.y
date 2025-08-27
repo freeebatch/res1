@@ -155,4 +155,5 @@ if __name__ == "__main__":
     print("✅ Both clients started.")
     idle()  # ✅ keeps both running
     user.stop()
+
     bot.stop()
