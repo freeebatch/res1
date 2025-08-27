@@ -1,4 +1,4 @@
-FROM python:3.10.4-slim-buster
+FROM python:3.10.4-slim-bullseye
 
 # Update apt and install necessary packages
 RUN apt-get update && apt-get upgrade -y && \
@@ -18,8 +18,8 @@ WORKDIR /app
 # Copy the rest of the application code
 COPY . .
 
-# Expose port 5000 (since Quart runs on port 5000 by default)
+# Expose port 8000 (Quart/Flask runs here)
 EXPOSE 8000
 
-# Start the Quart application
+# Start the application
 CMD flask run -h 0.0.0.0 -p 8000 & python3 main.py
