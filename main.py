@@ -6,11 +6,16 @@ import asyncio
 from pyrogram import Client, filters, idle
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
+import pyrogram
 
 from config import API_ID, API_HASH, BOT_TOKEN, SESSION
 
 # ——————————————————————————————————————————————
-# Initialize Bot and User Clients
+# Detect Pyrogram major version
+PYROGRAM_MAJOR = int(pyrogram.__version__.split(".")[0])
+print(f"🔍 Detected Pyrogram v{pyrogram.__version__}")
+
+# Initialize Bot
 bot = Client(
     "bot",
     api_id=API_ID,
@@ -18,12 +23,22 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-user = Client(
-    "user",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    session_string=SESSION  # ✅ Pyrogram v2 syntax
-)
+# Initialize User
+if PYROGRAM_MAJOR >= 2:
+    # Pyrogram v2+ syntax
+    user = Client(
+        "user",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION
+    )
+else:
+    # Pyrogram v1 syntax (SESSION is session_name or .session file)
+    user = Client(
+        SESSION,
+        api_id=API_ID,
+        api_hash=API_HASH
+    )
 
 # ——————————————————————————————————————————————
 active_jobs = {}
@@ -133,7 +148,9 @@ async def start_batch(c: Client, m: Message):
             await asyncio.sleep(1)
 
         if batch_offset + batch_size < total_count:
-            await progress_msg.edit(f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤")
+            await progress_msg.edit(
+                f"Sent {batch_offset + batch_size}/{total_count} — sleeping 30 s… 💤"
+            )
             await asyncio.sleep(60)
 
     active_jobs.pop(user_id, None)
@@ -155,5 +172,4 @@ if __name__ == "__main__":
     print("✅ Both clients started.")
     idle()  # ✅ keeps both running
     user.stop()
-
     bot.stop()
