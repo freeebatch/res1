@@ -28,8 +28,8 @@ active_jobs = {}
 print("🔄 All active jobs cleared on startup.")
 
 # fixed channels
-LOG_CHANNEL = "-1002912702631"
-DEST_CHANNEL = "-1003006399526"
+LOG_CHANNEL = "-1002912702631"     # apna log channel
+DEST_CHANNEL = "-1003006399526"   # apna destination channel
 
 # ——————————————————————————————————————————————
 # Helper Functions
@@ -106,6 +106,7 @@ async def start_batch(c: Client, m: Message):
 
     total_count = 1000       # max messages to process
     batch_size = 20          # per batch DONE messages
+    skip_limit = 200         # max messages to scan per batch
     sent_success = 0
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
@@ -134,6 +135,13 @@ async def start_batch(c: Client, m: Message):
 
             await progress_msg.edit(status)
             await asyncio.sleep(1)
+
+            # safety break: too many skips
+            if current_index >= skip_limit:
+                await progress_msg.edit(
+                    f"⚠️ Too many skips, moving to next batch… ({done_count} Done in this batch)"
+                )
+                break
 
         if batch_offset + current_index < total_count:
             await progress_msg.edit(f"Sent {sent_success}/{total_count} — sleeping 30 s… 💤")
