@@ -25,6 +25,7 @@ user = Client(
 
 # ——————————————————————————————————————————————
 active_jobs = {}
+job_progress = {}   # user_id -> (sent_success, total_count, running_flag)
 print("🔄 All active jobs cleared on startup.")
 
 # fixed channels
@@ -104,26 +105,28 @@ async def start_batch(c: Client, m: Message):
         active_jobs.pop(user_id, None)
         return await m.reply_text("❗️ Invalid Telegram link.", quote=True)
 
-    total_count = 1000       # max messages to process
-    batch_size = 20          # per batch DONE messages
-    skip_limit = 200         # max messages to scan per batch
+    total_count = 1000       # max Done messages to send
+    batch_size = 20          # per batch Done messages
     sent_success = 0
+    msg_index = 0            # global pointer, always increases
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
 
-    for batch_offset in range(0, total_count, batch_size):
-        done_count = 0
-        current_index = 0
+    job_progress[user_id] = (sent_success, total_count, True)
 
-        while done_count < batch_size and (batch_offset + current_index) < total_count:
+    while sent_success < total_count:
+        done_count = 0
+
+        while done_count < batch_size and sent_success < total_count:
             if not active_jobs.get(user_id):
                 await progress_msg.edit("🚫 Cancelled by user.")
+                job_progress[user_id] = (sent_success, total_count, False)
                 return
 
-            msg_id = start_id + batch_offset + current_index
-            msg = await fetch_message(bot, user, chat_id, msg_id, link_type)
-            current_index += 1
+            msg_id = start_id + msg_index
+            msg_index += 1  # always move forward
 
+            msg = await fetch_message(bot, user, chat_id, msg_id, link_type)
             if not msg:
                 status = f"{sent_success}/{total_count}: ❌ not found"
             else:
@@ -133,21 +136,17 @@ async def start_batch(c: Client, m: Message):
                     done_count += 1
                 status = f"{sent_success}/{total_count}: {result}"
 
+            job_progress[user_id] = (sent_success, total_count, True)
+
             await progress_msg.edit(status)
             await asyncio.sleep(1)
 
-            # safety break: too many skips
-            if current_index >= skip_limit:
-                await progress_msg.edit(
-                    f"⚠️ Too many skips, moving to next batch… ({done_count} Done in this batch)"
-                )
-                break
-
-        if batch_offset + current_index < total_count:
+        if sent_success < total_count:
             await progress_msg.edit(f"Sent {sent_success}/{total_count} — sleeping 30 s… 💤")
             await asyncio.sleep(30)
 
     active_jobs.pop(user_id, None)
+    job_progress[user_id] = (sent_success, total_count, False)
     await m.reply_text(f"✅ All done! ({sent_success}/{total_count} succeeded)", quote=True)
 
 
@@ -156,9 +155,21 @@ async def cancel_batch(c: Client, m: Message):
     user_id = m.from_user.id
     if user_id in active_jobs:
         active_jobs.pop(user_id, None)
+        job_progress[user_id] = (job_progress[user_id][0], job_progress[user_id][1], False)
         await m.reply("🛑 Cancelling process... Done.")
     else:
         await m.reply("❗ No active job found.")
+
+
+@bot.on_message(filters.command("status", prefixes="/"))
+async def status(c: Client, m: Message):
+    user_id = m.from_user.id
+    if user_id in job_progress:
+        sent, total, running = job_progress[user_id]
+        state = "⏳ Running" if running else "✅ Completed/Stopped"
+        await m.reply(f"📊 Status:\n\n✅ Sent: {sent}\n🎯 Target: {total}\n🚦 State: {state}")
+    else:
+        await m.reply("❗ No job found for you.")
 
 # ——————————————————————————————————————————————
 # Run bot
