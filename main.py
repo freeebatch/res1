@@ -91,9 +91,9 @@ async def start_batch(c: Client, m: Message):
         active_jobs.pop(user_id, None)
         return await m.reply_text("❗️ Invalid Telegram link.", quote=True)
 
-    total_count = 1000
+    total_count = 10000
     batch_size = 20
-    dest_chat = "-1003650632126"
+    dest_chat = "-1003697615503"
     sent_success = 0
 
     progress_msg = await m.reply_text("Starting batch… 🐥", quote=True)
